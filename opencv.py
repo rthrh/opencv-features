@@ -13,7 +13,15 @@ from scipy.cluster.vq import kmeans,vq
 from numpy.fft import fft2, ifft2, fftshift
 
 
+
+def gamma_correction(img, correction = 2.0):
+    img = img/255.0
+    img = cv2.pow(img, correction)
+    return np.uint8(img*255.0)
+
+
 def low_pass_filter(image,lpf=0.5):
+    #TODO -> BROKEN!!!
     L = 0.5
 
     x = np.linspace(-L, L, image.shape[1])
@@ -32,13 +40,15 @@ def low_pass_filter(image,lpf=0.5):
     return image_filtered
 
 def equalize(img):
+    #TODO -> does it even work??
     img_out = np.empty_like(img)
     cv2.equalizeHist(img,img_out)
     return img_out
 
 def quantize(img,color_depth = 2):
-    bit_rate_start = np.array(8).astype('uint8')
-    bit_rate = np.array(color_depth).astype('uint8')
+    #TODO -> too many local array copies 
+    bit_rate_start = np.uint8(8)
+    bit_rate = np.uint8(color_depth)
 
     rows = img.shape[0]
     cols = img.shape[1]
@@ -46,10 +56,10 @@ def quantize(img,color_depth = 2):
     # for i in range(0,rows):
         # for j in range(0,cols):
 
-    
+    img = np.float32(img/255.0)
     img_out = np.empty_like(img)
     
-    img_out[:] = np.round(pow(2,bit_rate_start)*img[:])/pow(2,bit_rate);
+    img_out[:] = (np.round(pow(2,bit_rate_start)*img[:])/pow(2,bit_rate));
     
 
     # if color_depth == 8:
@@ -57,7 +67,7 @@ def quantize(img,color_depth = 2):
         # return img
         
     # else:
-    return img_out
+    return np.uint8(img_out)
 
 def pixelize(img,block_size = 8):
     #### TODO #### IS NOT WORKING CORRECTLY WITH DOWN AND RIGHT SIDE OF IMAGE
@@ -107,9 +117,16 @@ def main():
         current_frame = feed.read()[1]
         width,height,channels = current_frame.shape
         
+        #GAMMA CORRECTION
+        gamma_frame = gamma_correction(current_frame,correction=1.8)
+        
+        
         #IMAGE SMOOTH
-        smooth_frame = cv2.medianBlur(current_frame,5)
+        smooth_frame = cv2.medianBlur(gamma_frame,5)
         smooth_frame = cv2.GaussianBlur(smooth_frame, (5,5),0)
+        
+
+        
         
         # current_frame = equalize(current_frame)
         
@@ -133,14 +150,24 @@ def main():
         #SOBEL FILTER
         sobel_frame = cv2.Sobel(smooth_frame, cv2.CV_8U, dx=1, dy=1) 
         
+        #Histogram of Gradients (HOG)
+        hog = cv2.HOGDescriptor()
+        hogParams = {'winStride': (8, 8), 'padding': (32, 32), 'scale': 1.05}
+        
+        hog_frame = hog.compute(sobel_frame)
+        
         
         
         #PIXELIZE
         pixel_frame = pixelize(smooth_frame,block_size = 12)
 
         #QUANTIZE
-        # quantized_frame = quantize(smooth_frame,color_depth =5)
+        quantized_frame = gamma_correction(smooth_frame,0.4)
+        quantized_frame = quantize(quantized_frame,color_depth = 4)
+        quantized_frame = gamma_correction(quantized_frame,0.5)
+        # print('unikaty = ',np.unique(quantized_frame))
 
+        
         #Phase Stretch Transform
         # pst_frame = pst(gray_frame, lpf=0.5, phase_strength=0.9, warp_strength=1.0, thresh_min=-0.7, thresh_max=0.9, morph_flag=False)
         
@@ -171,10 +198,10 @@ def main():
         # cv2.imshow('low_pass_frame', low_pass_frame)
         
         # cv2.imshow('current_frame', current_frame)
-        # cv2.imshow('filter frame', filter_frame)
-        cv2.imshow('pyramide_frame', pyramide_frame)
-        # cv2.imshow('pst_frame', pst_frame)
-        cv2.imshow('sobel_frame', sobel_frame)
+        cv2.imshow('quantized_frame', quantized_frame)
+        # cv2.imshow('gamma_frame', gamma_frame)
+        # cv2.imshow('sobel_frame', sobel_frame)
+        # cv2.imshow('hog_frame', hog_frame)
         
         # break
         
